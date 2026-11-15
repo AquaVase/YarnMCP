@@ -1,0 +1,19 @@
+pluginManagement {
+    repositories {
+        maven { url = 'https://www.jitpack.io' }
+        maven { url = 'https://maven.minecraftforge.net' }
+        maven { url = 'https://maven.fabricmc.net' }
+        gradlePluginPortal()
+        mavenCentral()
+    }
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == 'yarn-patcher') {
+                useModule("com.github.AquaVase:YarnPatcher:${requested.version}")
+            }
+        }
+    }
+}
+
+rootProject.name = 'YarnMCP'
+include 'mcp'

@@ -1,0 +1,72 @@
+plugins {
+    id 'yarn-patcher' version 'f6e45ea275'
+}
+
+group = 'com.github.yarnmcp'
+version = '1.20.6'
+
+// Minecraft 1.20.6 requires Java 21.
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+repositories { mavenCentral() }
+dependencies {
+    // MCPConfig adds Dist/OnlyIn annotations to the decompiled sources.
+    implementation 'net.minecraftforge:forgespi:7.0.0'
+}
+
+project(':mcp') {
+    apply plugin: 'net.minecraftforge.gradle.mcp'
+    mcp {
+        config = '1.20.6-20240429.135109'
+        pipeline = 'joined'
+    }
+}
+evaluationDependsOn(':mcp')
+
+patcher {
+    parent = project(':mcp')
+    mcVersion = '1.20.6'
+    mappings channel: 'official', version: '1.20.6'
+}
+
+yarnPatcher {
+    yarnVersion = '1.20.6+build.3'
+    sourceDirectory = layout.projectDirectory.dir('src/main/java')
+}
+
+tasks.register('setup') {
+    group = 'YarnMCP'
+    description = 'Generate and install the Minecraft 1.20.6 Yarn sources.'
+    dependsOn tasks.named('setupYarn')
+}
+
+def clientAssets = tasks.named('downloadAssets')
+def clientNatives = tasks.named('extractNatives')
+tasks.register('runClient', JavaExec) {
+    group = 'application'
+    description = 'Run the Yarn Minecraft 1.20.6 client.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'net.minecraft.client.main.Main'
+    args '--version', '1.20.6', '--accessToken', '0', '--username', 'Player',
+         '--assetsDir', clientAssets.get().output.absolutePath, '--assetIndex', '16',
+         '--userProperties', '{}', '--userType', 'legacy', '--versionType', 'release'
+    workingDir = layout.projectDirectory.dir('run').asFile
+    javaLauncher = javaToolchains.launcherFor(java.toolchain)
+    doFirst { workingDir.mkdirs() }
+}
+
+tasks.withType(JavaExec).configureEach {
+    if (name == 'runClient' || name == 'mcp.client.Start.main()') {
+        dependsOn clientAssets, clientNatives
+        environment 'assetDirectory', clientAssets.get().output.absolutePath
+        systemProperty 'java.library.path', clientNatives.get().output.get().asFile.absolutePath
+        systemProperty 'org.lwjgl.librarypath', clientNatives.get().output.get().asFile.absolutePath
+        if (System.getProperty('os.name').startsWith('Windows')) {
+            // Force the JDK selector to use TCP when Windows AF_UNIX is unavailable.
+            systemProperty 'jdk.net.unixdomain.tmpdir', project.buildFile.absolutePath
+        }
+    }
+}
